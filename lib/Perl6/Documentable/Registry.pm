@@ -1,29 +1,26 @@
 use v6;
 use Perl6::Documentable;
+use OO::Monitors;
 
-class Perl6::Documentable::Registry {
-    has @.documentables;
+monitor Perl6::Documentable::Registry {
+    has $.documentables = Supply.new;
     has Bool $.composed = False;
     has %!cache;
     has %!grouped-by;
+    has %!lookup-cache;
     method add-new(*%args) {
-        die "Cannot add something to a composed registry" if $.composed;
-        @!documentables.push: my $d = Perl6::Documentable.new(|%args);
+        die "Cannot add something to a composed registry" if $!composed;
+        $!documentables.emit: my $d = Perl6::Documentable.new(|%args);
         $d;
     }
     method compose() {
+        $!documentables.done;
         $!composed = True;
     }
-    method grouped-by(Str $what) {
-        die "You need to compose this registry first" unless $.composed;
-        %!grouped-by{$what} ||= @!documentables.classify(*."$what"());
+    method grouped-by(Str $what --> Supply) {
+        %!grouped-by{$what} //= $!documentables.classify({$_."$what"()});
     }
-    method lookup(Str $what, Str :$by!) {
-        unless %!cache{$by}:exists {
-            for @!documentables -> $d {
-                %!cache{$by}{$d."$by"()}.push: $d;
-            }
-        }
-        %!cache{$by}{$what};
+    method lookup(Str $what, Str :$by! --> Supply) {
+        $.grouped-by($by).grep({.key eq $what}).map({.value})
     }
 }

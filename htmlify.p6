@@ -17,6 +17,19 @@ my $*DEBUG = False;
 
 my $tg;
 my %methods-by-type;
+my Bool %written;
+
+my $DR = Perl6::Documentable::Registry.new;
+
+# Pod::To::HTML can only handle a single thread right now
+my $writer = Supply.new;
+$writer.act: {
+    spurt .[0], p2h |.[1];
+    say "Wrote ", .[0], " 'cause of line ", .[2]
+}
+sub write-pod ($filename, $pod, $section?) {
+    $writer.emit([$filename, [$pod, $section//Nil], Backtrace.new[3].line])
+}
 
 sub url-munge($_) {
     return $_ if m{^ <[a..z]>+ '://'};
@@ -107,50 +120,48 @@ sub svg-for-file($file) {
     $str;
 }
 
-# --sparse=5: only process 1/5th of the files
-# mostly useful for performance optimizations, profiling etc.
-sub MAIN(Bool :$debug, Bool :$typegraph = False, Int :$sparse) {
+# --sparse=5: 
+sub MAIN(
+    Bool :$debug,
+    Bool :$typegraph = False,
+    Int :$sparse
+        #=[ only process 1/Nth of the files
+            mostly useful for performance optimizations, profiling etc. ]
+) {
     $*DEBUG = $debug;
 
     say 'Creating html/ subdirectories ...';
-    for '', <type language routine images syntax> {
+    for '', <type language routine images misc> {
         mkdir "html/$_" unless "html/$_".IO ~~ :e;
     }
-
-    my $*DR = Perl6::Documentable::Registry.new;
 
     say 'Reading type graph ...';
     $tg = Perl6::TypeGraph.new-from-file('type-graph.txt');
     my %h = $tg.sorted.kv.flat.reverse;
-
-    process-pod-dir 'Language', :$sparse;
     write-type-graph-images(:force($typegraph));
-    # XXX: Generalize
-    process-pod-dir 'Type', :sorted-by{ %h{.key} // -1 }, :$sparse;
-    for $*DR.lookup("type", :by<kind>).list {
-        write-type-source $_;
+
+    $DR.lookup('type', :by<kind>).tap: {
+        .tap({
+            %written{$_.name} = False;
+            write-type-source $_;
+            %written{$_.name} = True;
+        })
     }
+
+    tap-disambiguation-files;
+    tap-search-file;
+    tap-index-files;
+
+    for <routine misc> -> $kind {
+        tap-kind $kind;
+    }
+
+
+    process-pod-dir 'Type', :sorted-by{ %h{.key} // -1 }, :$sparse;
+    #process-pod-dir 'Language', :$sparse;
 
     say 'Composing doc registry ...';
-    $*DR.compose;
-
-    write-disambiguation-files;
-    write-search-file;
-    write-index-files;
-
-    say 'Writing per-routine files ...';
-    for $*DR.lookup('routine', :by<kind>).uniq(:as{.name}) -> $d {
-        write-routine-file($d.name);
-        print '.'
-    }
-    say '';
-
-    say 'Writing per-syntactic-feature files ...';
-    for $*DR.lookup('syntax', :by<kind>).uniq(:as{.name}).list -> $d {
-        write-syntax-file($d.name);
-        print '.'
-    }
-    say '';
+    $DR.compose;
 
     say 'Processing complete.';
     if $sparse {
@@ -170,20 +181,23 @@ sub process-pod-dir($dir, :&sorted-by = &[cmp], :$sparse) {
             => $_
         }).sort(&sorted-by);
     if $sparse {
-        @pod-sources = @pod-sources[^(@pod-sources / $sparse).ceiling];
+        @pod-sources = @pod-sources[{^($_ / $sparse).ceiling}];
     }
 
     say "Processing $dir Pod files ...";
     my $total = +@pod-sources;
     my $what  = $dir.lc;
+    my &processor = $what eq "language"
+        ?? &process-language-source
+        !! &process-type-source;
     for @pod-sources.kv -> $num, (:key($podname), :value($file)) {
         printf "% 4d/%d: % -40s => %s\n", $num+1, $total, $file.path, "$what/$podname";
         my $pod  = EVAL(slurp($file.path) ~ "\n\$=pod")[0];
-        process-pod-source :$what, :$pod, :$podname, :pod-is-complete;
+        processor :$pod, :$podname, :pod-is-complete;
     }
 }
 
-multi process-pod-source(:$what where "language", :$pod, :$podname, :$pod-is-complete) {
+sub process-language-source(:$pod, :$podname, :$pod-is-complete) {
     my $name = $podname;
     my $summary = '';
     if $pod.contents[0] ~~ {$_ ~~ Pod::Block::Named and .name eq "TITLE"} {
@@ -196,7 +210,7 @@ multi process-pod-source(:$what where "language", :$pod, :$podname, :$pod-is-com
     } else {
         note "$podname does not have an =SUBTITLE";
     }
-    my $origin = $*DR.add-new(
+    my $origin = $DR.add-new(
         :kind<language>,
         :name($name),
         :url("/language/$podname"),
@@ -204,13 +218,14 @@ multi process-pod-source(:$what where "language", :$pod, :$podname, :$pod-is-com
         :$pod,
         :pod-is-complete,
     );
+
     find-definitions :$pod, :$origin;
-    spurt "html/$what/$podname.html", p2h($pod, $what);
+    write-pod "html/language/$podname.html", $pod, 'language';
 }
 
-multi process-pod-source(:$what where "type", :$pod, :$podname, :$pod-is-complete) {
+sub process-type-source(:$pod, :$podname, :$pod-is-complete) {
     my $type = $tg.types{$podname};
-    my $origin = $*DR.add-new(
+    my $origin = $DR.add-new(
         :kind<type>,
         :subkinds($type ?? $type.packagetype !! 'class'),
         :categories($type ?? $type.categories !! Nil),
@@ -223,13 +238,10 @@ multi process-pod-source(:$what where "type", :$pod, :$podname, :$pod-is-complet
 }
 
 # XXX: Generalize
-multi write-type-source($doc) {
+sub write-type-source($doc) {
     my $pod     = $doc.pod;
     my $podname = $doc.name;
     my $type    = $tg.types{$podname};
-    my $what    = 'type';
-
-    say "Writing $what document for $podname ...";
 
     if !$doc.pod-is-complete {
         $pod = pod-with-title("$doc.subkinds() $podname", $pod[1..*])
@@ -250,7 +262,8 @@ multi write-type-source($doc) {
            @mro.shift; # current type is already taken care of
 
         for $type.roles -> $r {
-            next unless %methods-by-type{$r};
+            note "No documentation seen for $r" unless %written{$r}:exists;
+            next unless %methods-by-type{$r}:exists;
             $pod.contents.push:
                 pod-heading("Methods supplied by role $r"),
                 pod-block(
@@ -262,7 +275,8 @@ multi write-type-source($doc) {
                 ;
         }
         for @mro -> $c {
-            next unless %methods-by-type{$c};
+            note "No documentation seen for $c" unless %written{$c}:exists;
+            next unless %methods-by-type{$c}:exists;
             $pod.contents.push:
                 pod-heading("Methods supplied by class $c"),
                 pod-block(
@@ -273,6 +287,7 @@ multi write-type-source($doc) {
                 %methods-by-type{$c}.list,
                 ;
             for $c.roles -> $r {
+                note "No documentation seen for $r" unless %written{$r}:exists;
                 next unless %methods-by-type{$r};
                 $pod.contents.push:
                     pod-heading("Methods supplied by role $r"),
@@ -291,7 +306,7 @@ multi write-type-source($doc) {
         note "Type $podname not found in type-graph data";
     }
 
-    spurt "html/$what/$podname.html", p2h($pod, $what);
+    write-pod "html/type/$podname.html", $pod, 'type';
 }
 
 sub find-definitions (:$pod, :$origin, :$min-level = -1) {
@@ -358,12 +373,12 @@ sub find-definitions (:$pod, :$origin, :$min-level = -1) {
                 }
                 when 'variable'|'sigil'|'twigil'|'declarator'|'quote' {
                     # TODO: More types of syntactic features
-                    %attr = :kind<syntax>,
+                    %attr = :kind<misc>,
                             :categories($subkinds),
                 }
                 when $unambiguous {
                     # Index anything from an X<>
-                    %attr = :kind<syntax>,
+                    %attr = :kind<misc>,
                             :categories($subkinds),
                 }
                 default {
@@ -373,7 +388,7 @@ sub find-definitions (:$pod, :$origin, :$min-level = -1) {
             }
 
             # We made it this far, so it's a valid definition
-            my $created = $*DR.add-new(
+            my $created = $DR.add-new(
                 :$origin,
                 :pod[],
                 :!pod-is-complete,
@@ -497,184 +512,162 @@ sub viz-hints ($group) {
 ';
 }
 
-sub write-search-file () {
-    say 'Writing html/js/search.js ...';
-    my $template = slurp("template/search_template.js");
-    my @items;
+sub tap-search-file () {
     sub escape(Str $s) {
         $s.trans([</ \\ ">] => [<\\/ \\\\ \\">]);
     }
-    @items.push: $*DR.lookup('language', :by<kind>).sort(*.name).map({
-        qq[\{ label: "Language: {.name}", value: "{.name}", url: "{.url}" \}]
-    });
-    @items.push: $*DR.lookup('type', :by<kind>).sort(*.name).map({
-        qq[\{ label: "Type: {.name}", value: "{.name}", url: "{.url}" \}]
-    });
-    @items.push: $*DR.lookup('routine', :by<kind>).uniq(:as{.name}).sort(*.name).map({
-        do for .subkinds // 'Routine' -> $subkind {
-            qq[\{ label: "{ $subkind.tclc }: {escape .name}", value: "{escape .name}", url: "{.url}" \}]
+    ( $DR.lookup('language', :by<kind>),
+      $DR.lookup('type',     :by<kind>),
+      $DR.lookup('routine',  :by<kind>),
+      $DR.lookup('misc',    :by<kind>),
+    ).reduce({merge $^a: $^b}).map({
+        .unique(:as{.name}).map({
+            .subkinds.map(*.wordcase).map: -> $subkind {
+                qq[\{ label: "$subkind: {escape .name}", value: "{escape .name}", url: "{.url}" \}]
+            }
+        })
+    }).grab({
+        .reduce({merge $^a: $^b}).grab({ .join("\n") }).tap: {
+            my $template = slurp("template/search_template.js");
+            spurt("html/js/search.js", $template.subst("ITEMS", $_));
+            say 'Wrote html/js/search.js ...';
         }
-    });
-    @items.push: $*DR.lookup('syntax', :by<kind>).sort(*.name).map({
-        do for .subkinds // 'Syntax' -> $subkind {
-            qq[\{ label: "{ $subkind.tclc }: {escape .name}", value: "{escape .name}", url: "{.url}" \}]
-        }
-    });
-
-    my $items = @items.join(",\n");
-    spurt("html/js/search.js", $template.subst("ITEMS", $items));
+    }).tap
 }
 
-sub write-disambiguation-files () {
-    say 'Writing disambiguation files ...';
-    for $*DR.grouped-by('name').kv -> $name, $p is copy {
-        print '.';
-        my $pod = pod-with-title("Disambiguation for '$name'");
-        if $p.elems == 1 {
-            $p = $p[0] if $p ~~ Array;
-            if $p.origin -> $o {
-                $pod.contents.push:
-                    pod-block(
-                        pod-link("'$name' is a $p.human-kind()", $p.url),
-                        ' from ',
-                        pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
-                    );
+sub tap-disambiguation-files () {
+    $DR.grouped-by('name').tap: {
+        my ($name, $disambig) = .key, .value;
+        $disambig.grab({$_}).tap: -> $p {
+            my $pod = pod-with-title("Disambiguation for '$name'");
+            if $p.elems == 1 {
+                $p = $p[0] if $p ~~ Array;
+                if $p.origin -> $o {
+                    $pod.contents.push:
+                        pod-block(
+                            pod-link("'$name' is a $p.human-kind()", $p.url),
+                            ' from ',
+                            pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
+                        );
+                }
+                else {
+                    $pod.contents.push:
+                        pod-block(
+                            pod-link("'$name' is a $p.human-kind()", $p.url)
+                        );
+                }
             }
             else {
                 $pod.contents.push:
-                    pod-block(
-                        pod-link("'$name' is a $p.human-kind()", $p.url)
-                    );
+                    pod-block("'$name' can be anything of the following"),
+                    $p.map({
+                        if .origin -> $o {
+                            pod-item(
+                                pod-link(.human-kind, .url),
+                                ' from ',
+                                pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
+                            )
+                        }
+                        else {
+                            pod-item( pod-link(.human-kind, .url) )
+                        }
+                    });
             }
+            my $html = p2h($pod, 'routine');
+            write-pod "html/$name.subst(/<[/\\]>/,'_',:g).html", $html;
         }
-        else {
-            $pod.contents.push:
-                pod-block("'$name' can be anything of the following"),
-                $p.map({
-                    if .origin -> $o {
-                        pod-item(
-                            pod-link(.human-kind, .url),
-                            ' from ',
-                            pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
-                        )
-                    }
-                    else {
-                        pod-item( pod-link(.human-kind, .url) )
-                    }
-                });
-        }
-        my $html = p2h($pod, 'routine');
-        spurt "html/$name.subst(/<[/\\]>/,'_',:g).html", $html;
     }
-    say '';
 }
 
-sub write-index-files () {
-    say 'Writing html/index.html ...';
-    spurt 'html/index.html', p2h EVAL slurp('lib/HomePage.pod') ~ "\n\$=pod";
+sub tap-index-files () {
+    write-pod 'html/index.html', EVAL slurp('lib/HomePage.pod') ~ "\n\$=pod";
 
-    say 'Writing html/language.html ...';
-    spurt 'html/language.html', p2h(pod-with-title(
-        'Perl 6 Language Documentation',
-        pod-table($*DR.lookup('language', :by<kind>).sort(*.name).map({[
+    $DR.lookup('language', :by<kind>).tap: {
+        .sort({.name}).map({[
             pod-link(.name, .url),
             .summary
-        ]}))
-    ), 'language');
+        ]}).grab({
+            pod-with-title(
+                "Perl 6 Language Documentation",
+                pod-table $_,
+            )
+        }).tap: {
+            write-pod "html/language.html", $_, 'language';
+        }
+    }
 
-    write-main-index :kind<type>;
-
-    for <basic composite domain-specific exceptions> -> $category {
-        write-sub-index :kind<type> :$category;
+    my &preamble = { pod-block
+        'This is a list of ', pod-bold('all'), ' built-in ' ~ $^kind.tc ~
+        "s that are documented here as part of the Perl 6 language. " ~
+        "Use the above menu to narrow it down topically."
+    }
+    my $kind = 'type';
+    $DR.lookup($kind, :by<kind>).tap: -> $k {
+        tap-index $k, :$kind, :&preamble;
+        for <basic composite domain-specific exceptions> -> $category {
+            tap-index $k.grep({.categories.any eq $category}), :$kind, :$category;
+        }
     }
 
     my &summary = { 
-        pod-block("(From ", $_>>.origin.map({
-            pod-link(.name, .url)
-        }).reduce({$^a,", ",$^b}),")")
+        .map({ pod-link .origin.name, .origin.url })\
+        .grab({.reduce({$^a,", ",$^b})}).tap: {
+            pod-block "(From ", @$_, ")"
+        }
     }
 
-    write-main-index :kind<routine> :&summary;
-
-    for <sub method term operator> -> $category {
-        write-sub-index :kind<routine> :$category :&summary;
+    $kind = 'routine';
+    $DR.lookup('routine', :by<kind>).tap: -> $r {
+        tap-index $r, :$kind, :&summary, :&preamble;
+        for <sub method term operator> -> $category {
+            tap-index $r.grep({.categories.any eq $category}), :$kind, :&summary, :$category;
+        }
     }
 }
 
-sub write-main-index(:$kind, :&summary = {Nil}) {
-    say "Writing html/$kind.html ...";
-    spurt "html/$kind.html", p2h(pod-with-title(
-        "Perl 6 {$kind.tc}s",
-        pod-block(
-            'This is a list of ', pod-bold('all'), ' built-in ' ~ $kind.tc ~
-            "s that are documented here as part of the Perl 6 language. " ~
-            "Use the above menu to narrow it down topically."
-        ),
-        pod-table($*DR.lookup($kind, :by<kind>)\
-            .categorize(*.name).sort(*.key)>>.value\
-            .map({[
-                .map({.subkinds // Nil}).uniq.join(', '),
-                pod-link(.[0].name, .[0].url),
-                .&summary
-            ]})
-        )
-    ), $kind);
-}
-
-# XXX: Only handles normal routines, not types nor operators
-sub write-sub-index(:$kind, :$category, :&summary = {Nil}) {
-    say "Writing html/$kind-$category.html ...";
-    spurt "html/$kind-$category.html", p2h(pod-with-title(
-        "Perl 6 {$category.tc} {$kind.tc}s",
-        pod-table($*DR.lookup($kind, :by<kind>)\
-            .grep({$category ⊆ .categories})\ # XXX
-            .categorize(*.name).sort(*.key)>>.value\
-            .map({[
-                .map({.subkinds // Nil}).uniq.join(', '),
-                pod-link(.[0].name, .[0].url),
-                .&summary
-            ]})
-        )
-    ), $kind);
-}
-
-sub write-routine-file($name) {
-    say 'Writing html/routine/$name.html ...' if $*DEBUG;
-    my @docs = $*DR.lookup($name, :by<name>).grep(*.kind eq 'routine');
-    my $subkind = 'routine';
-    {
-        my @subkinds = @docs>>.subkinds;
-        $subkind = @subkinds[0] if all(@subkinds>>.defined) && [eq] @subkinds;
-    }
-    my $pod = pod-with-title("Documentation for $subkind $name",
-        pod-block("Documentation for $subkind $name, assembled from the
-            following types:"),
-        @docs.map({
-            pod-heading("{.origin.human-kind} {.origin.name}"),
-            pod-block("From ", pod-link(.origin.name, .origin.url ~ '#' ~ (.subkinds~'_' if .subkinds ~~ /fix/) ~ .name)),
-            .pod.list,
+sub tap-index(Supply $s, :$kind!, :$category = Nil, :&summary = {Nil}, :&preamble) {
+    $s.categorize({.name}).map(-> $p {
+        $p.value.grab(->@v{
+            $p.key => [
+                say @v.elems;
+              @v.map({.subkinds // Nil}).uniq.join(', '),
+              pod-link(@v[0].name, @v[0].url),
+              @v.&summary,
+            ]
         })
-    );
-    spurt "html/routine/$name.html", p2h($pod, 'routine');
+    }).reduce(->$a,*@b{merge $a: @b}).tap: {
+        my $t = .grab({ pod-with-title
+                "Perl 6 {join " ", $category.tc, $kind.tc}s",
+                preamble($kind),
+                pod-table .sort({.key}).map({.value}),
+        }).tap: {
+            write-pod "html/{join "-", $kind, $category//Nil}.html", $_, $kind;
+        }
+    }
 }
 
-sub write-syntax-file($name) {
-    say 'Writing html/syntax/$name.html ...' if $*DEBUG;
-    my @docs = $*DR.lookup($name, :by<name>).grep(*.kind eq 'syntax');
-    my $subkind = 'syntactic feature';
-    {
-        my @subkinds = @docs>>.subkinds;
-        $subkind = @subkinds[0] if all(@subkinds>>.defined) && [eq] @subkinds;
+sub tap-kind ($kind) {
+    $DR.lookup($kind, :by<kind>).tap: {
+        .categorize({.name}).tap: {
+            my ($name, $d-supply) = .key, .value;
+            my @subkinds = $d-supply.map({.subkinds}).unique;
+            $d-supply.map({
+                pod-heading("{.origin.human-kind} {.origin.name}"),
+                pod-block("From ",
+                    pod-link(.origin.name, .origin.url ~ '#' ~ (.subkinds~'_' if .subkinds ~~ /fix/) ~ .name)
+                ),
+                .pod.list,
+            }).grab({
+                my $subkind = @subkinds.elems == 1 ?? @subkinds.list[0] !! $kind;
+                pod-with-title
+                    "Documentation for $subkind $name",
+                    pod-block("Documentation for $subkind $name, assembled from the following types:"),
+                    @$_
+            }).tap: {
+                write-pod "html/$kind/$name.subst(/<[/\\]>/,'_',:g).html", $_, $kind;
+            }
+        }
     }
-    my $pod = pod-with-title("Documentation for $subkind $name",
-        pod-block("Documentation for $subkind $name"),
-        @docs.map({
-            pod-heading("{.origin.human-kind} {.origin.name}"),
-            pod-block("From ", pod-link(.origin.name, .origin.url ~ '#' ~ (.subkinds~'_' if .subkinds ~~ /fix/) ~ .name)),
-            .pod.list,
-        })
-    );
-    spurt "html/syntax/$name.subst(/<[/\\]>/,'_',:g).html", p2h($pod, 'syntax');
 }
 
 sub write-qualified-method-call(:$name!, :$pod!, :$type!) {
@@ -683,7 +676,7 @@ sub write-qualified-method-call(:$name!, :$pod!, :$type!) {
         pod-block('From ', pod-link($type, "/type/{$type}#$name")),
         @$pod,
     );
-    spurt "html/routine/{$type}.{$name}.html", p2h($p, 'routine');
+    write-pod "html/routine/{$type}.{$name}.html", $p, 'routine';
 }
 
 sub footer-html() {

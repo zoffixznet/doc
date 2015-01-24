@@ -145,9 +145,11 @@ sub MAIN(
     write-index-files;
 
     say 'Writing per-routine files ...';
-    for $*DR.lookup('routine', :by<kind>).unique(:as{.name}) -> $d {
-        write-routine-file($d.name);
-        print '.'
+    await do for $*DR.lookup('routine', :by<kind>).unique(:as{.name}) -> $d {
+        start {
+            write-routine-file($d.name);
+            print '.'
+        }
     }
     say '';
 

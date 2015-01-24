@@ -554,46 +554,51 @@ sub write-search-file () {
     spurt("html/js/search.js", $template.subst("ITEMS", $items));
 }
 
-sub write-disambiguation-files () {
-    say 'Writing disambiguation files ...';
-    for $*DR.grouped-by('name').kv -> $name, $p is copy {
-        print '.';
-        my $pod = pod-with-title("Disambiguation for '$name'");
-        if $p.elems == 1 {
-            $p = $p[0] if $p ~~ Array;
-            if $p.origin -> $o {
-                $pod.contents.push:
-                    pod-block(
-                        pod-link("'$name' is a $p.human-kind()", $p.url),
-                        ' from ',
-                        pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
-                    );
-            }
-            else {
-                $pod.contents.push:
-                    pod-block(
-                        pod-link("'$name' is a $p.human-kind()", $p.url)
-                    );
-            }
+sub write-single-disambiguation-file($name, $p is copy) {
+    my $pod = pod-with-title("Disambiguation for '$name'");
+    if $p.elems == 1 {
+        $p = $p[0] if $p ~~ Array;
+        if $p.origin -> $o {
+            $pod.contents.push:
+                pod-block(
+                    pod-link("'$name' is a $p.human-kind()", $p.url),
+                    ' from ',
+                    pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
+                );
         }
         else {
             $pod.contents.push:
-                pod-block("'$name' can be anything of the following"),
-                $p.map({
-                    if .origin -> $o {
-                        pod-item(
-                            pod-link(.human-kind, .url),
-                            ' from ',
-                            pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
-                        )
-                    }
-                    else {
-                        pod-item( pod-link(.human-kind, .url) )
-                    }
-                });
+                pod-block(
+                    pod-link("'$name' is a $p.human-kind()", $p.url)
+                );
         }
-        my $html = p2h($pod, 'routine');
-        spurt "html/$name.subst(/<[/\\]>/,'_',:g).html", $html;
+    }
+    else {
+        $pod.contents.push:
+            pod-block("'$name' can be anything of the following"),
+            $p.map({
+                if .origin -> $o {
+                    pod-item(
+                        pod-link(.human-kind, .url),
+                        ' from ',
+                        pod-link($o.human-kind() ~ ' ' ~ $o.name, $o.url),
+                    )
+                }
+                else {
+                    pod-item( pod-link(.human-kind, .url) )
+                }
+            });
+    }
+    my $html = p2h($pod, 'routine');
+    spurt "html/$name.subst(/<[/\\]>/,'_',:g).html", $html;
+}
+
+sub write-disambiguation-files () {
+    say 'Writing disambiguation files ...';
+    await do for $*DR.grouped-by('name').kv -> $name, $p {
+        start {
+            write-single-disambiguation-file($name, $p);
+        }
     }
     say '';
 }

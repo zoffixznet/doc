@@ -224,6 +224,12 @@ sub process-language-source(:$pod, :$podname, :$pod-is-complete) {
 }
 
 sub process-type-source(:$pod, :$podname, :$pod-is-complete) {
+    my $summary = '';
+    if $pod.contents[1] ~~ {$_ ~~ Pod::Block::Named and .name eq "SUBTITLE"} {
+        $summary = $pod.contents[1].contents[0].contents[0];
+    } else {
+        note "$podname does not have an =SUBTITLE";
+    }
     my $type = $tg.types{$podname};
     my $origin = $DR.add-new(
         :kind<type>,
@@ -635,15 +641,15 @@ sub tap-index-files () {
 
 sub tap-index(Supply $s, :$kind!, :$category = Nil, :&summary = {Nil}, :&preamble) {
     $s.categorize({.name}).map(-> $p {
-        $p.value.grab(->@v{
+        $p.value.grab(-> @v {
             $p.key => [
                 say @v.elems;
-              @v.map({.subkinds // Nil}).uniq.join(', '),
+              @v.map({.subkinds // Nil}).unique.join(', '),
               pod-link(@v[0].name, @v[0].url),
               @v.&summary,
             ]
         })
-    }).reduce(->$a,*@b{merge $a: @b}).tap: {
+    }).reduce(-> $a, *@b { merge $a: @b }).tap: {
         my $t = .grab({ pod-with-title
                 "Perl 6 {join " ", $category.tc, $kind.tc}s",
                 preamble($kind),

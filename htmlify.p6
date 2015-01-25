@@ -120,18 +120,19 @@ sub svg-for-file($file) {
     $str;
 }
 
-# --sparse=5: 
+# --sparse=5: only process 1/5th of the files
+# mostly useful for performance optimizations, profiling etc.
 sub MAIN(
     Bool :$debug,
     Bool :$typegraph = False,
-    Int :$sparse
-        #=[ only process 1/Nth of the files
-            mostly useful for performance optimizations, profiling etc. ]
+    Int  :$sparse,
+    Bool :$disambiguation = True,
+    Bool :$search-file = True,
 ) {
     $*DEBUG = $debug;
 
     say 'Creating html/ subdirectories ...';
-    for '', <type language routine images misc> {
+    for '', <type language routine images syntax> {
         mkdir "html/$_" unless "html/$_".IO ~~ :e;
     }
 
@@ -148,14 +149,13 @@ sub MAIN(
         })
     }
 
-    tap-disambiguation-files;
-    tap-search-file;
+    tap-disambiguation-files if $disambiguation;
+    tap-search-file          if $search-file;
     tap-index-files;
 
-    for <routine misc> -> $kind {
+    for <routine syntax> -> $kind {
         tap-kind $kind;
     }
-
 
     process-pod-dir 'Type', :sorted-by{ %h{.key} // -1 }, :$sparse;
     #process-pod-dir 'Language', :$sparse;
@@ -164,8 +164,8 @@ sub MAIN(
     $DR.compose;
 
     say 'Processing complete.';
-    if $sparse {
-        say "This is a sparse run. DO NOT SYNC WITH doc.perl6.org!";
+    if $sparse || !$search-file || !$disambiguation {
+        say "This is a sparse or incomplete run. DO NOT SYNC WITH doc.perl6.org!";
     }
 }
 
@@ -229,6 +229,7 @@ sub process-type-source(:$pod, :$podname, :$pod-is-complete) {
         :kind<type>,
         :subkinds($type ?? $type.packagetype !! 'class'),
         :categories($type ?? $type.categories !! Nil),
+        :$summary,
         :$pod,
         :$pod-is-complete,
         :name($podname),
@@ -368,17 +369,24 @@ sub find-definitions (:$pod, :$origin, :$min-level = -1) {
                             :categories($subkinds),
                 }
                 when 'class'|'role' {
+                    my $summary = '';
+                    if @c[$i+1] ~~ {$_ ~~ Pod::Block::Named and .name eq "SUBTITLE"} {
+                        $summary = @c[$i+1].contents[0].contents[0];
+                    } else {
+                        note "$name does not have an =SUBTITLE";
+                    }
                     %attr = :kind<type>,
                             :categories($tg.types{$name}.?categories//''),
+                            :$summary,
                 }
                 when 'variable'|'sigil'|'twigil'|'declarator'|'quote' {
                     # TODO: More types of syntactic features
-                    %attr = :kind<misc>,
+                    %attr = :kind<syntax>,
                             :categories($subkinds),
                 }
                 when $unambiguous {
                     # Index anything from an X<>
-                    %attr = :kind<misc>,
+                    %attr = :kind<syntax>,
                             :categories($subkinds),
                 }
                 default {
@@ -417,7 +425,7 @@ sub find-definitions (:$pod, :$origin, :$min-level = -1) {
                 # Determine proper subkinds
                 my Str @subkinds = first-code-block($chunk)\
                     .match(:g, /:s ^ 'multi'? (sub|method)»/)\
-                    .>>[0]>>.Str.uniq;
+                    .>>[0]>>.Str.unique;
 
                 note "The subkinds of routine $created.name() in $origin.name() cannot be determined."
                     unless @subkinds;
@@ -441,8 +449,8 @@ sub find-definitions (:$pod, :$origin, :$min-level = -1) {
 
 sub write-type-graph-images(:$force) {
     unless $force {
-        my $dest = 'html/images/type-graph-Any.svg'.path;
-        if $dest.e && $dest.modified >= 'type-graph.txt'.path.modified {
+        my $dest = 'html/images/type-graph-Any.svg'.IO;
+        if $dest.e && $dest.modified >= 'type-graph.txt'.IO.modified {
             say "Not writing type graph images, it seems to be up-to-date";
             say "To force writing of type graph images, supply the --typegraph";
             say "option at the command line, or delete";
@@ -519,7 +527,7 @@ sub tap-search-file () {
     ( $DR.lookup('language', :by<kind>),
       $DR.lookup('type',     :by<kind>),
       $DR.lookup('routine',  :by<kind>),
-      $DR.lookup('misc',    :by<kind>),
+      $DR.lookup('syntax',    :by<kind>),
     ).reduce({merge $^a: $^b}).map({
         .unique(:as{.name}).map({
             .subkinds.map(*.wordcase).map: -> $subkind {
@@ -690,6 +698,8 @@ sub footer-html() {
             incomplete. Your contribution is appreciated.
         </p>
         <p>
+            This documentation is provided under the terms of the Artistic
+            License 2.0.
             The Camelia image is copyright 2009 by Larry Wall.
         </p>
     ];

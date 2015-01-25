@@ -35,7 +35,7 @@ class Perl6::TypeGraph::Viz {
 
             # Add ancestors of all seeds to the pool nodes
             visit($_) for @seeds;
-            @.types .= uniq;
+            @.types .= unique;
 
             # Find a new batch of seed nodes
             @seeds = uniq(@seeds>>.sub, @seeds>>.doers);
@@ -91,7 +91,7 @@ class Perl6::TypeGraph::Viz {
     }
 
     method to-file ($file, :$format = 'svg', :$size) {
-        my $tmpfile = IO::Spec.tmpdir ~ '/p6-doc-graphviz-' ~ (^100_000).pick;
+        my $tmpfile = $*TMPDIR ~ '/p6-doc-graphviz-' ~ (^100_000).pick;
         spurt $tmpfile, self.as-dot(:$size);
         run 'dot', "-T$format", "-o$file", $tmpfile or die 'dot command failed! (did you install Graphviz?)';
         unlink $tmpfile;

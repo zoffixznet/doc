@@ -2,6 +2,8 @@
 
 =TITLE role QuantHash
 
+=SUBTITLE Common role for collections of objects represented as hash keys
+
     class QuantHash does Associative { }
 
 A C<QuantHash> represents a set of objects, represented as the keys of a

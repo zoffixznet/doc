@@ -2,6 +2,8 @@
 
 =TITLE class Str
 
+=SUBTITLE String of characters
+
     class Str is Cool does Stringy { }
 
 Built-in class for strings. Objects of type C<Str> are immutable.
@@ -194,7 +196,7 @@ Searches for C<$matcher> in C<$input> and returns a list of all matches
 C<$limit> matches.
 
 If no matcher is supplied, a list of characters in the string
-(e.g. C<$delimiter = rx/./>) is returned.
+(e.g. C<$matcher = rx/./>) is returned.
 
 Examples:
 

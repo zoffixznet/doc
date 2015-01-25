@@ -2,6 +2,8 @@
 
 =TITLE class List
 
+=SUBTITLE Sequence of values
+
     my class List is Iterable does Positional { .. }
 
 C<List> stores items sequentially and potentially lazily.
@@ -133,6 +135,13 @@ Examples:
     > grep { .Str.chars > 3 }, 'hello', 1, 22/7, 42, 'world'
     hello 3.142857 world
 
+=head2 routine grep-index
+
+    multi method grep-index(List:D: Mu $matcher) returns List:D
+
+Returns a lazy list of indices against which the associated elements
+smart-match.  The indicies are returned in order.
+
 =head2 routine first
 
     multi sub    first(Mu $matcher, *@elems)
@@ -146,6 +155,20 @@ Examples:
     say (1, 22/7, 42).first: * > 5;     # 42
     say $f = ('hello', 1, 22/7, 42, 'world').first: Complex;
     say $f.perl;                        #  Failure.new(exception => X::AdHoc.new(payload => "No values matched"))
+
+=head2 routine first-index
+
+    multi method first-index(List:D: Mu $matcher)
+
+Returns the first index against which C<$matcher> smart-matches, or C<Nil> if
+no match was found.
+
+=head2 routine last-index
+
+    multi method last-index(List:D: Mu $matcher)
+
+Returns the last index against which C<$matcher> smart-matches, or C<Nil> if
+no match was found.
 
 =head2 routine classify
 

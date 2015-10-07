@@ -76,7 +76,13 @@ Returns the part of the original string following the match.
 
 =head2 method make
 
+Defined as:
+
     method make(Match:D: Mu $ast)
+
+Usage:
+
+    MATCH.make(AST)
 
 Sets the AST to C<$ast>, and returns it.
 

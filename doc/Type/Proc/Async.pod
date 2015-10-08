@@ -47,7 +47,13 @@ An example that opens an external program for writing:
 
 =head2 method new
 
+Defined as:
+
     method new(:$path, *@args, :$w) returns Proc::Async:D
+
+Usage:
+
+    $proc = Proc::Async.new(PATH, ARGS, :w?)
 
 Creates a new C<Proc::Async> object with external program name or path C<$path>
 and the command line arguments C<@args>.
@@ -58,7 +64,13 @@ C<say>.
 
 =head2 method stdout
 
+Defined as:
+
     method stdout(Proc::Async:D: :$bin) returns Supply:D
+
+Usage:
+
+    PROC::ASYNC.stdout(:bin?)
 
 Returns the L<Supply|/type/Supply> for the external program's standard output
 stream. If C<:bin> is passed, the standard output is passed along in  binary as
@@ -82,7 +94,13 @@ you try.
 
 =head2 method stderr
 
+Defined as:
+
     method stderr(Proc::Async:D: :$bin) returns Supply:D
+
+Usage:
+
+    PROC::ASYNC.stderr(:bin?)
 
 Returns the L<Supply|/type/Supply> for the external program's standard error
 stream. If C<:bin> is passed, the standard error is passed along in  binary as
@@ -106,7 +124,13 @@ you try.
 
 =head2 method w
 
+Defined as:
+
     method w(Proc::Async:D:)
+
+Usage:
+
+    PROC::ASYNC.w
 
 Returns a true value if C<:w> as passed to the constructor, that is, if the
 external program is started with its input stream made available to input from
@@ -114,7 +138,13 @@ the program through C<print>, C<say> and C<write>.
 
 =head2 method start
 
+Defined as:
+
     method start(Proc::Async:D:, :$scheduler = $*SCHEDULER, :$cwd = $*CWD) returns Promise:D
+
+Usage:
+
+    PROC::ASYNC.start(:SCHEDULER?, :CWD?)
 
 Initiates spawning of the external program. Returns a promise that will be
 kept with a L<Proc::Status|/type/Proc::Status> object once the external
@@ -127,27 +157,51 @@ thrown.
 
 =head2 method started
 
+Defined as:
+
     method started(Proc::Async:D:) returns Bool:D
+
+Usage:
+
+    PROC::ASYNC.started
 
 Returns C<False> before C<.start> has been called, and C<True> afterwards.
 
 =head2 method path
 
+Defined as:
+
     method path(Proc::Async:D:)
+
+Usage:
+
+    PROC::ASYNC.path
 
 Returns the name and/or path of the external program that was passed to the
 C<new> method as first argument.
 
 =head2 method args
 
+Defined as:
+
     method args(Proc::Async:D:) returns Positional:D
+
+Usage:
+
+    PROC::ASYNC.args
 
 Returns the command line arguments for the external programs, as passed to the
 C<new> method.
 
 =head2 method write
 
+Defined as:
+
     method write(Proc::Async:D: Blob:D $b, :$scheduler = $*SCHEDULER)
+
+Usage:
+
+    PROC::ASYNC.write(DATA, :SCHEDULER?)
 
 Write the binary data in C<$b> to the standard input stream of the external
 program.
@@ -164,7 +218,13 @@ L<X::Proc::Async::MustBeStarted> exception is thrown.
 
 =head2 method print
 
+Defined as:
+
     method print(Proc::Async:D: Str(Any) $str, :$scheduler = $*SCHEDULER)
+
+Usage:
+
+    PROC::ASYNC.print(STRING, :SCHEDULER?)
 
 Write the text data in C<$str> to the standard input stream of the external
 program, encoding it as UTF-8.
@@ -181,7 +241,13 @@ L<X::Proc::Async::MustBeStarted> exception is thrown.
 
 =head2 method say
 
+Defined as:
+
     method say(Proc::Async:D: $output, :$scheduler = $*SCHEDULER)
+
+Usage:
+
+    PROC::ASYNC.say(OUTPUT, :SCHEDULER?)
 
 Calls method C<gist> on the C<$output>, adds a newline, encodes it as UTF-8,
 and sends it to the standard input stream of the external
@@ -199,7 +265,13 @@ L<X::Proc::Async::MustBeStarted> exception is thrown.
 
 =head2 method close-stdin
 
+Defined as:
+
     method close-stdin(Proc::Async:D:)
+
+Usage:
+
+    PROC::ASYNC.close-stdin
 
 Closes the standard input stream of the external program. Programs that read
 from STDIN often only terminate when their input stream is closed. So if
@@ -215,7 +287,13 @@ L<X::Proc::Async::MustBeStarted> exception is thrown.
 
 =head2 method kill
 
+Defined as:
+
     kill(Proc::Async:D: $signal = "HUP")
+
+Usage:
+
+    PROC::ASYNC.kill(SIGNAL?)
 
 Sends a signal to the running program. The signal can be a signal name
 ("KILL" or "SIGKILL"), an integer (9) or an element of the C<Signal> enum

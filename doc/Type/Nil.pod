@@ -49,13 +49,25 @@ assigning C<Nil> to a variable which has a default will restore that default.
 
 =head2 method gist
 
+Defined as:
+
     method gist() returns Str:D
+
+Usage:
+
+    NIL.gist
 
 Returns C<"Nil">.
 
 =head2 method Str
 
+Defined as:
+
     method Str() returns Str:D
+
+Usage:
+
+    NIL.Str
 
 Returns the empty string.
 

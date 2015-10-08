@@ -18,8 +18,15 @@ L<Any|/type/Any>.
 
 =head2 routine defined
 
+Defined as:
+
     multi sub    defined(Mu) returns Bool:D
     multi method defined()   returns Bool:D
+
+Usage:
+
+    defined EXPR
+    EXPR.defined
 
 Returns C<False> on the type object, and C<True> otherwise.
 
@@ -34,8 +41,15 @@ C<False> even for instances:
 
 =head2 routine Bool
 
+Defined as:
+
     multi sub    Bool(Mu) returns Bool:D
     multi method Bool()   returns Bool:D
+
+Usage:
+
+    Bool EXPR
+    EXPR.Bool
 
 Returns C<False> on the type object, and C<True> otherwise.
 
@@ -51,7 +65,13 @@ empty L<string|/type/Str> or numerical zeros
 
 =head2 method Str
 
+Defined as:
+
     multi method Str()   returns Str
+
+Usage:
+
+    EXPR.Str
 
 Returns a string representation of the invocant, intended to be machine
 readable. Method C<Str> warns on type objects, and produces the empty string.
@@ -60,8 +80,15 @@ readable. Method C<Str> warns on type objects, and produces the empty string.
 
 =head2 routine gist
 
+Defined as:
+
     multi sub    gist(Mu) returns Str
     multi method gist()   returns Str
+
+Usage:
+
+    gist EXPR
+    EXPR.gist
 
 Returns a string representation of the invocant, optimized for
 fast recognition by humans.
@@ -79,8 +106,15 @@ C<say $something.gist> generally produce the same output.
 
 =head2 routine perl
 
+Defined as:
+
     multi sub    perl(Mu) returns Str
     multi method perl()   returns Str
+
+Usage:
+
+    perl EXPR
+    EXPR.perl
 
 Returns a Perlish representation of the object (i.e., can usually
 be re-evaluated with L<EVAL> to regenerate the object). The exact output of
@@ -89,7 +123,13 @@ write a Perl expression that produces a particular value
 
 =head2 method clone
 
+Defined as:
+
     method clone(*%twiddles)
+
+Usage:
+
+    EXPR.clone(ARGS)
 
 Creates a shallow clone of the invocant. If named arguments are passed
 to it, their values are used in every place where an attribute name matches
@@ -111,7 +151,13 @@ say $p.clone(y => -5);      # Point(2, -5)
 
 =head2 method new
 
+Defined as:
+
     multi method new(*%attrinit)
+
+Usage:
+
+    $newexpr = EXPR.new
 
 Default method for constructing (create + initialize) new objects
 of a class. This method expects only named arguments which are then
@@ -126,7 +172,13 @@ Construction> for more information.
 
 =head2 method bless
 
+Defined as:
+
     method bless(*%attrinit) returns Mu:D
+
+Usage:
+
+    $newexpr = EXPR.bless(ARGS)
 
 Lower-level object construction method than C<new>.
 
@@ -150,7 +202,13 @@ subclassing harder).
 
 =head2 method CREATE
 
+Defined as:
+
     method CREATE() returns Mu:D
+
+Usage:
+
+    $newobj = EXPR.CREATE
 
 Allocates a new object of the same type as the invocant, without
 initializing any attributes.
@@ -159,7 +217,13 @@ initializing any attributes.
 
 =head2 method print
 
+Defined as:
+
     multi method print() returns Bool:D
+
+Usage:
+
+    EXPR.print
 
 Prints value to C<$*OUT> after stringification using C<.Str> method without
 adding a newline at end.
@@ -168,7 +232,13 @@ adding a newline at end.
 
 =head2 method say
 
+Defined as:
+
     multi method say() returns Bool:D
+
+Usage:
+
+    EXPR.say
 
 Prints value to C<$*OUT> after stringification using C<.gist> method with
 newline at end.
@@ -195,7 +265,13 @@ mechanism when no direct candidate is available to dispatch to.
 
 =head2 method WHICH
 
+Defined as:
+
     multi method WHICH() returns ObjAt:D
+
+Usage:
+
+    EXPR.WHICH
 
 Returns an object of type L<ObjAt> which uniquely identifies the object.
 Value types override this method which makes sure that two equivalent objects
@@ -205,13 +281,25 @@ return the same return value from C<WHICH>.
 
 =head2 method WHERE
 
+Defined as:
+
     method WHERE() returns Int
+
+Usage:
+
+    EXPR.WHERE
 
 Returns an C<Int> representing the memory address of the object.
 
 =head2 method WHY
 
+Defined as:
+
     multi method WHY()
+
+Usage:
+
+    EXPR.WHY
 
 Returns the attached Pod value.  For instance,
 
@@ -257,7 +345,13 @@ Takes the given item and passes it to the enclosing C<gather> block.
 
 =head2 method so
 
+Defined as:
+
     method so()
+
+Usage:
+
+    EXPR.so
 
 Returns a C<Bool> value representing the logical non-negation of an
 expression.  One can use this method similarly to the English sentence: "If
@@ -271,7 +365,13 @@ that is B<so>, then do this thing".  For instance,
 
 =head2 method not
 
+Defined as:
+
     method not()
+
+Usage:
+
+    EXPR.not
 
 Returns a C<Bool> value representing the logical negation of an expression.
 Thus it is the opposite of C<so>.

@@ -13,12 +13,14 @@ test:
 	prove --exec perl6 -r t
 
 help:
-	@echo "Usage: make [html|html-nohighlight|test]"
+	@echo "Usage: make [html|html-nohighlight|test|sparse|run]"
 	@echo ""
 	@echo "Options:"
 	@echo "   html:             generate the HTML documentation"
 	@echo "   html-nohighlight: generate HTML documentation without syntax highlighting"
 	@echo "   test:             run the test suite"
+	@echo "   sparse:           generate a subset of the HTML documentation"
+	@echo "   run:              serve out html/ directory"
 
 run:
 	@echo "Starting local server…"
